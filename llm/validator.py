@@ -9,16 +9,19 @@ def _strip_markdown_fences(text: str) -> str:
     text = text.strip()
     text = re.sub(r"^```(?:json)?\s*\n?", "", text)
     text = re.sub(r"\n?```\s*$", "", text)
+
     # { ... } 블록만 추출
     start = text.find("{")
     end = text.rfind("}")
+
     if start != -1 and end != -1:
         text = text[start:end+1]
+
     return text.strip()
 
 
 def _sanitize_action_item(raw: dict, meeting_id: str) -> dict:
-    """필드 누락·타입 오류 보정"""
+    """필드 누락 시 기본값으로 보정"""
     raw.setdefault("meeting_id", meeting_id)
     raw.setdefault("description", raw.get("title", ""))
     raw.setdefault("assignee_role", "미확인")
@@ -27,7 +30,7 @@ def _sanitize_action_item(raw: dict, meeting_id: str) -> dict:
     raw.setdefault("source_utterances", [])
     raw.setdefault("source_quote", "")
     raw.setdefault("campaign", None)
-    raw.setdefault("advertiser", "노바드림")
+    raw.setdefault("advertiser", "미확인")
     raw.setdefault("status", "pending")
 
     # confidence 범위 강제

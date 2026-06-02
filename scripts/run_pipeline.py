@@ -18,38 +18,39 @@ from pipeline.transform import transform
 from llm.extractor import extract
 from llm.slack_payload import save_slack_payload
 
+SUMMARY_PREVIEW_LENGTH = 100
 
-def run(json_path: str, advertiser: str = "노바드림", title: str = "캠페인 사전 정렬 회의"):
+def run(json_path: str, advertiser: str, title: str) -> str:
     print("\n" + "="*50)
-    print("  Meeting Pipeline 시작")
+    print("  Meeting Ops Pipeline 시작")
     print("="*50)
 
     # Step 1: DB 초기화
-    print("\n[Step 1] DB 초기화")
+    print("\n[1/4] DB 초기화")
     init_db()
 
     # Step 2: Raw 데이터 적재
-    print(f"\n[Step 2] Ingest: {json_path}")
+    print(f"\n[2/4] Ingest: {json_path}")
     meeting_id = ingest(json_path, advertiser=advertiser, title=title)
 
     # Step 3: 전처리 (정규화 + 청킹)
-    print(f"\n[Step 3] Transform: {meeting_id}")
+    print(f"\n[3/4] Transform: {meeting_id}")
     transform(meeting_id)
 
     # Step 4: LLM 액션아이템 추출
-    print(f"\n[Step 4] LLM Extract: {meeting_id}")
+    print(f"\n[4/4] LLM Extract: {meeting_id}")
     result = extract(meeting_id, advertiser=advertiser)
 
     if result:
-        print(f"\n✅ 추출 완료: {len(result.action_items)}개 액션아이템")
-        print(f"📝 요약: {result.meeting_summary[:80]}...")
+        print(f"\n ▶ LLM 추출 완료: {len(result.action_items)}개 액션아이템")
+        print(f" 요약: {result.meeting_summary[:SUMMARY_PREVIEW_LENGTH]}...")
 
         # Step 5: Slack 페이로드 생성
-        print(f"\n[Step 5] Slack Payload 생성")
+        print(f"\n[5/5] Slack Payload 생성")
         slack_path = save_slack_payload(meeting_id)
-        print(f"📤 Slack 페이로드: {slack_path}")
+        print(f"▶ Slack 페이로드: {slack_path}")
     else:
-        print("\n⚠️  LLM 추출 실패 (재시도 초과)")
+        print("\n ▶ LLM 추출 실패")
 
     print("\n" + "="*50)
     print(f"  Pipeline 완료  |  meeting_id: {meeting_id}")
@@ -61,11 +62,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Meeting Pipeline Runner")
     parser.add_argument(
         "--json",
-        default="data/raw/ko_meeting_3speakers.json",
+        required=True,
         help="transcript JSON 경로"
     )
-    parser.add_argument("--advertiser", default="노바드림")
-    parser.add_argument("--title", default="캠페인 사전 정렬 회의")
+    parser.add_argument("--advertiser", required=True)
+    parser.add_argument("--title", required=True)
     args = parser.parse_args()
 
     run(args.json, advertiser=args.advertiser, title=args.title)

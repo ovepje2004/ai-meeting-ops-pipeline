@@ -1,11 +1,20 @@
 import json
+import os
 from datetime import datetime
 from pipeline.db import get_connection
 
 
 PRIORITY_EMOJI = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-CONFIDENCE_EMOJI = {"high": "✅", "medium": "⚠️", "low": "❓"}
+CONFIDENCE_EMOJI = {"high": "✅", "medium": "⚠️", "low": "💥"}
 
+SELECT_MEETING_QUERY = """
+        SELECT * FROM meetings WHERE meeting_id = ?
+    """
+SELECT_ACTION_ITEMS_QUERY = """
+        SELECT * FROM action_items
+        WHERE meeting_id = ?
+        ORDER BY confidence DESC
+    """
 
 def generate_slack_payload(meeting_id: str) -> dict:
     """
@@ -13,15 +22,8 @@ def generate_slack_payload(meeting_id: str) -> dict:
     """
     conn = get_connection()
 
-    meeting = conn.execute(
-        "SELECT * FROM meetings WHERE meeting_id = ?", (meeting_id,)
-    ).fetchone()
-
-    items = conn.execute("""
-        SELECT * FROM action_items
-        WHERE meeting_id = ?
-        ORDER BY confidence DESC
-    """, (meeting_id,)).fetchall()
+    meeting = conn.execute(SELECT_MEETING_QUERY, (meeting_id,)).fetchone()
+    items = conn.execute(SELECT_ACTION_ITEMS_QUERY, (meeting_id,)).fetchall()
 
     conn.close()
 
@@ -33,7 +35,7 @@ def generate_slack_payload(meeting_id: str) -> dict:
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"📋 {meeting['title']} — 액션아이템",
+                "text": f"▶ {meeting['title']} — 액션아이템",
                 "emoji": True
             }
         },
@@ -55,7 +57,7 @@ def generate_slack_payload(meeting_id: str) -> dict:
     blocks.append({"type": "divider"})
 
     for i, item in enumerate(items, 1):
-        priority_icon = PRIORITY_EMOJI.get(item["priority"], "⚪")
+        priority_icon = PRIORITY_EMOJI.get(item["priority"], "🟡")
         conf_icon = CONFIDENCE_EMOJI.get(item["confidence_level"], "⚠️")
         due = item["due_date"] or "미정"
 
@@ -79,15 +81,14 @@ def generate_slack_payload(meeting_id: str) -> dict:
         "elements": [
             {
                 "type": "mrkdwn",
-                "text": f"🤖 Gemini 2.5 Flash 자동 추출 | {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                "text": f"{datetime.now().strftime('%Y-%m-%d %H:%M')}"
             }
         ]
     })
 
     return {
-        "channel": "#meeting-action-items",
-        "username": "Meeting Bot",
-        "icon_emoji": ":memo:",
+        "channel": "#meeting-action-items", #os.getenv("SLACK_CHANNEL")
+        "username": "Meeting Bot", #os.getenv("SLACK_USERNAME")
         "blocks": blocks
     }
 
@@ -95,22 +96,12 @@ def generate_slack_payload(meeting_id: str) -> dict:
 def save_slack_payload(meeting_id: str, output_path: str = None) -> str:
     """페이로드를 JSON 파일로 저장"""
     payload = generate_slack_payload(meeting_id)
-    if not output_path:
-        output_path = f"data/processed/slack_payload_{meeting_id}.json"
 
-    import os
+    output_path = f"data/processed/slack_payload_{meeting_id}.json"
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    print(f"[Slack] Payload saved: {output_path}")
     return output_path
-
-
-if __name__ == "__main__":
-    import sys
-    mid = sys.argv[1] if len(sys.argv) > 1 else None
-    if mid:
-        path = save_slack_payload(mid)
-        print(f"Done: {path}")
