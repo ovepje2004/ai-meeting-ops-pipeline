@@ -20,7 +20,7 @@ from llm.slack_payload import save_slack_payload
 
 SUMMARY_PREVIEW_LENGTH = 100
 
-def run(json_path: str, advertiser: str, title: str):
+def run(json_path: str, advertiser: str, title: str) -> str:
     print("\n" + "="*50)
     print("  Meeting Ops Pipeline 시작")
     print("="*50)
