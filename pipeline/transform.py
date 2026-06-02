@@ -34,7 +34,7 @@ TAKE_UTTERANCES_QUERY ="""
         ORDER BY segment_id
     """
 
-PUSH_PROCESSED_QUERY = """
+INSERT_PROCESSED_QUERY = """
         INSERT INTO utterances_processed
         (segment_id, meeting_id, speaker, role,
         original_text, normalized_text, chunk_index)
@@ -132,7 +132,7 @@ def transform(meeting_id: str):
 
     with conn:
         for item in chunked:
-            conn.execute(PUSH_PROCESSED_QUERY, (
+            conn.execute(INSERT_PROCESSED_QUERY, (
                 item["segment_id"], item["meeting_id"],
                 item["speaker"], item["role"],
                 item["original_text"], item["normalized_text"],
