@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
 HIGH_THRESHOLD = 0.8
@@ -71,18 +71,20 @@ class ActionItem(BaseModel):
     advertiser: Optional[str] = Field(None, description="광고주명")
     extracted_at: Optional[datetime] = None
 
-    @field_validator("confidence_level", mode="before")
-    @classmethod
-    def set_confidence_level(cls, v, info):
-        if v is not None:
-            return v
-        confidence = info.data.get("confidence", 0)
-        if confidence >= HIGH_THRESHOLD:
-            return ConfidenceLevel.HIGH
-        elif confidence >= MEDIUM_THRESHOLD:
-            return ConfidenceLevel.MEDIUM
-        else:
-            return ConfidenceLevel.LOW
+    @model_validator(mode="after")
+    def set_confidence_level(self):
+        if self.confidence_level is None:
+
+            if self.confidence >= HIGH_THRESHOLD:
+                self.confidence_level = ConfidenceLevel.HIGH
+
+            elif self.confidence >= MEDIUM_THRESHOLD:
+                self.confidence_level = ConfidenceLevel.MEDIUM
+
+            else:
+                self.confidence_level = ConfidenceLevel.LOW
+
+        return self
 
     @field_validator("priority")
     @classmethod
