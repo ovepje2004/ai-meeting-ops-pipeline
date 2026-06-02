@@ -27,7 +27,7 @@ ABBR_DICT: dict[str, str] = {
 }
 
 
-TAKE_UTTERANCES_QUERY ="""
+SELECT_UTTERANCES_QUERY ="""
         SELECT segment_id, meeting_id, speaker, role, text
         FROM utterances_raw
         WHERE meeting_id = ?
@@ -107,7 +107,7 @@ def transform(meeting_id: str):
     """raw utterances → processed utterances 변환 후 DB 저장 (멱등)"""
     conn = get_connection()
 
-    rows = conn.execute(TAKE_UTTERANCES_QUERY, (meeting_id,)).fetchall()
+    rows = conn.execute(SELECT_UTTERANCES_QUERY, (meeting_id,)).fetchall()
 
     if not rows:
         print(f"[Transform] No raw segments for {meeting_id}")

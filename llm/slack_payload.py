@@ -7,10 +7,10 @@ from pipeline.db import get_connection
 PRIORITY_EMOJI = {"high": "🔴", "medium": "🟡", "low": "🟢"}
 CONFIDENCE_EMOJI = {"high": "✅", "medium": "⚠️", "low": "💥"}
 
-TAKE_MEETING_QUERY = """
+SELECT_MEETING_QUERY = """
         SELECT * FROM meetings WHERE meeting_id = ?
     """
-TAKE_ACTION_ITEMS_QUERY = """
+SELECT_ACTION_ITEMS_QUERY = """
         SELECT * FROM action_items
         WHERE meeting_id = ?
         ORDER BY confidence DESC
@@ -22,8 +22,8 @@ def generate_slack_payload(meeting_id: str) -> dict:
     """
     conn = get_connection()
 
-    meeting = conn.execute(TAKE_MEETING_QUERY, (meeting_id,)).fetchone()
-    items = conn.execute(TAKE_ACTION_ITEMS_QUERY, (meeting_id,)).fetchall()
+    meeting = conn.execute(SELECT_MEETING_QUERY, (meeting_id,)).fetchone()
+    items = conn.execute(SELECT_ACTION_ITEMS_QUERY, (meeting_id,)).fetchall()
 
     conn.close()
 
