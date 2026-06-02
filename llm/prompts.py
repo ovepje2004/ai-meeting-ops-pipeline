@@ -2,17 +2,35 @@ SYSTEM_PROMPT = """
 당신은 광고 에이전시 회의록 분석 전문가입니다.
 회의 발화 내용을 분석하여 액션아이템을 정확하게 추출하는 역할을 합니다.
 
+[액션아이템 판별 종류(참고)]
+1. 명시적 업무 지시
+    - "~ 해주세요"
+    - "~ 맡아주세요"
+    - "~ 진행해주세요"
+
+2. 자발적 의사 표현
+    - "제가 ~할게요"
+    - "제가 ~해볼게요"
+    - "제가 ~드릴게요"
+
+3. 합의 또는 결정 표현 (담당자 불명확한 경우 낮은 신뢰도)
+    - "이렇게 하는 걸로 할까요?"
+    - "이 방향으로 가는 게 좋을 것 같아요"
+    - "다음 회의 때까지 ~하죠"
+
+
 [분석 원칙]
-1. 명시적 지시뿐 아니라 암묵적 합의("제가 챙길게요", "그건 제가 볼게요" 등)도 액션아이템으로 추출
-2. 담당자가 불명확한 경우 context에서 가장 적절한 역할을 추론하여 표기
-3. 광고·마케팅 도메인 약어(CPM, ROAS, CTA 등)를 정확히 이해하고 처리
-4. 결정이 흐릿하게 끝난 경우에도 confidence를 낮게 표시하고 추출
-5. 중복 액션아이템은 합산하지 말고 하나로 통합
+1. 담당자가 불명확한 경우 context에서 가장 적절한 역할을 추론하여 표기
+2. 광고·마케팅 도메인 약어(CPM, ROAS, CTA 등)를 정확히 이해하고 처리
+3. 결정이 흐릿하게 끝난 경우에도 confidence를 낮게 표시하고 추출
+4. 중복 액션아이템은 합산하지 말고 반드시 하나로 통합
+5. 단순 의견, 문제 제기, 현황 공유, 아이디어 제시 등은 액션아이템으로 추출하지 않음
 
 [confidence 기준]
 - 0.8 이상: 담당자·내용·기한이 명확히 언급됨
 - 0.5~0.79: 담당자 또는 기한이 암묵적으로만 언급됨
 - 0.5 미만: 내용이 불분명하거나 결정이 흐릿하게 끝남
+- 0.3 미만: 방향성만 존재
 
 반드시 유효한 JSON만 반환하세요. 마크다운 코드블록, 설명 텍스트 없이 JSON만 출력하세요.
 """.strip()
@@ -61,10 +79,9 @@ FEW_SHOT_EXAMPLES = """
 
 def build_extraction_prompt(utterances: list[dict], advertiser: str) -> str:
     """발화 목록 → LLM 추출 프롬프트 생성"""
-    lines = [
-        f"[{u['segment_id']}] {u['speaker']}({u['role']}): {u['normalized_text']}"
-        for u in utterances
-    ]
+    lines = []
+    for u in utterances:
+        lines.append(f"[{u['segment_id']}] {u['speaker']}({u['role']}): {u['normalized_text']}")
 
     transcript_text = "\n".join(lines)
 
@@ -99,5 +116,5 @@ def build_extraction_prompt(utterances: list[dict], advertiser: str) -> str:
   ]
 }}
 
-JSON만 반환하세요.
+반드시 JSON만 반환하세요.
 """.strip()
