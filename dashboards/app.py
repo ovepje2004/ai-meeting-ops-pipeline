@@ -5,54 +5,147 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import streamlit as st
 import pandas as pd
 import sqlite3
-import json
 from collections import Counter
 import re
+import plotly.express as px
+import plotly.graph_objects as go
 
 from pipeline.db import DB_PATH
 
+# ─────────────────────────────────────────────
+# UI CONFIG
+# ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Meeting Pipeline Dashboard",
-    page_icon="📋",
+    page_title="Meeting Intelligence",
+    page_icon="📊",
     layout="wide",
 )
 
-# ── DB 로딩 헬퍼 ─────────────────────────────────────────────
+st.markdown("""
+<style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
+    
+    html, body, [data-testid="stAppViewContainer"] {
+        font-family: "SF Pro Display", "-apple-system", "BlinkMacSystemFont", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+        background-color: #101826 !important;
+        color: #FFFFFF !important; /* [변경] 기본 본문 글씨를 화이트로 변경 */
+    }
+    .main {
+        background-color: #101826;
+    }
+    .block-container {
+        padding-top: 1.5rem;
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }
+    h1, h2, h3, h4 {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.03em !important;
+    }
+    
+    label[data-testid="stWidgetLabel"] p {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+    }
+    
+    div[data-testid="metric-container"] {
+        background: #172131;
+        border: 1px solid #223147;
+        padding: 22px;
+        border-radius: 16px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    div[data-testid="metric-container"]:hover {
+        transform: translateY(-3px);
+        border-color: #0064ff;
+        box-shadow: 0 12px 24px rgba(0, 100, 255, 0.15);
+    }
+    
+    div[data-testid="stMetricValue"] {
+        color: #ffffff !important;
+        font-size: 26px !important;
+        font-weight: 700 !important;
+    }
+    
+    div[data-testid="stMetricLabel"] {
+        color: #f1f5f9 !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+    }
+    
+    button[data-baseweb="tab"] {
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        color: #94a3b8 !important;
+        padding: 12px 16px !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #0064ff !important;
+        border-bottom-color: #0064ff !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────
+# DATA LOADING
+# ─────────────────────────────────────────────
 @st.cache_data(ttl=30)
 def load_data():
     if not DB_PATH.exists():
-        return {}, {}, {}, {}
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+        return None, None, None, None
 
+    conn = sqlite3.connect(DB_PATH)
     meetings = pd.read_sql("SELECT * FROM meetings", conn)
     action_items = pd.read_sql("SELECT * FROM action_items", conn)
     logs = pd.read_sql("SELECT * FROM llm_extraction_logs", conn)
     utterances = pd.read_sql("SELECT * FROM utterances_processed", conn)
     conn.close()
+    
     return meetings, action_items, logs, utterances
-
-
-# ── 사이드바 ─────────────────────────────────────────────────
-st.sidebar.title("📋 Meeting Pipeline")
-st.sidebar.markdown("---")
 
 meetings_df, items_df, logs_df, utt_df = load_data()
 
 if meetings_df is None or len(meetings_df) == 0:
-    st.warning("데이터가 없습니다. 먼저 `make run`으로 파이프라인을 실행해주세요.")
-    st.code("make run", language="bash")
+    st.warning("데이터가 없습니다. `make run`을 먼저 실행해주세요.")
     st.stop()
 
-# 날짜 처리
-items_df["extracted_at"] = pd.to_datetime(items_df["extracted_at"], errors="coerce")
+
+# ─────────────────────────────────────────────
+# PREPROCESSING 
+# ─────────────────────────────────────────────
+items_df = items_df.merge(
+    meetings_df[["meeting_id", "meeting_date"]],
+    on="meeting_id",
+    how="left"
+)
+
+items_df["meeting_date"] = pd.to_datetime(items_df["meeting_date"], errors="coerce")
 meetings_df["meeting_date"] = pd.to_datetime(meetings_df["meeting_date"], errors="coerce")
-items_df["week"] = items_df["extracted_at"].dt.to_period("W").astype(str)
 
-# 필터
-advertiser_list = ["전체"] + sorted(meetings_df["advertiser"].unique().tolist())
-selected_advertiser = st.sidebar.selectbox("광고주 필터", advertiser_list)
+# 데이터 누락 방지를 위해 날짜 기준 정렬 및 주차 생성
+meetings_df = meetings_df.sort_values("meeting_date")
+items_df = items_df.sort_values("meeting_date")
 
+meetings_df["week"] = meetings_df["meeting_date"].dt.to_period("W").astype(str)
+items_df["week"] = items_df["meeting_date"].dt.to_period("W").astype(str)
+
+
+# ─────────────────────────────────────────────
+# TOP FILTER BAR
+# ─────────────────────────────────────────────
+st.title("📊 Meeting Intelligence Dashboard")
+
+colf1, colf2 = st.columns([2, 1])
+with colf1:
+    advertiser_list = ["전체"] + sorted(meetings_df["advertiser"].dropna().unique().tolist())
+    selected_advertiser = st.selectbox("📌 광고주 필터", advertiser_list)
+with colf2:
+    threshold = st.slider("🔎 Review 필요 Confidence 기준", 0.0, 1.0, 0.7, 0.05)
+
+# 필터링 적용
 if selected_advertiser != "전체":
     filtered_items = items_df[items_df["advertiser"] == selected_advertiser]
     filtered_meetings = meetings_df[meetings_df["advertiser"] == selected_advertiser]
@@ -60,168 +153,264 @@ else:
     filtered_items = items_df
     filtered_meetings = meetings_df
 
-st.sidebar.markdown("---")
-st.sidebar.metric("총 회의 수", len(filtered_meetings))
-st.sidebar.metric("총 액션아이템", len(filtered_items))
-pending = len(filtered_items[filtered_items["status"] == "pending"])
-st.sidebar.metric("미완료 항목", pending)
+pending_count = len(filtered_items[filtered_items["status"] == "pending"])
 
-# ── 메인 타이틀 ──────────────────────────────────────────────
-st.title("📋 회의 분석 대시보드")
-st.markdown(f"광고주: **{selected_advertiser}** | 마지막 갱신: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}")
-st.markdown("---")
 
-# ════════════════════════════════════════════════════════════
-# Widget 1: 주차별 회의·액션아이템 발생 추이
-# ════════════════════════════════════════════════════════════
-st.subheader("📈 위젯 1 — 주차별 회의·액션아이템 발생 추이")
-st.caption("의사결정자가 '언제 어느 주에 부하가 집중됐는지' 파악하는 뷰")
+# ─────────────────────────────────────────────
+# KPI CARDS
+# ─────────────────────────────────────────────
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
-col1, col2 = st.columns(2)
+# 1. 총 회의 수
+kpi1.markdown(
+    f'<div data-testid="metric-container">'
+    f'<div style="color: #F1F5F9 !important; font-size: 14px; font-weight: 600; margin-bottom: 8px;">📅 총 회의 수</div>'
+    f'<div style="color: #FFFFFF !important; font-size: 28px; font-weight: 700;">{len(filtered_meetings)}</div>'
+    f'</div>', 
+    unsafe_allow_html=True
+)
 
-with col1:
-    # 주차별 회의 수
-    if "meeting_date" in filtered_meetings.columns and not filtered_meetings.empty:
-        mtg_week = filtered_meetings.copy()
-        mtg_week["week"] = mtg_week["meeting_date"].dt.to_period("W").astype(str)
-        mtg_cnt = mtg_week.groupby("week").size().reset_index(name="회의 수")
-        st.bar_chart(mtg_cnt.set_index("week")["회의 수"])
-        st.caption("주차별 회의 수")
+# 2. 추출된 액션아이템
+kpi2.markdown(
+    f'<div data-testid="metric-container">'
+    f'<div style="color: #F1F5F9 !important; font-size: 14px; font-weight: 600; margin-bottom: 8px;">📝 추출된 액션아이템</div>'
+    f'<div style="color: #FFFFFF !important; font-size: 28px; font-weight: 700;">{len(filtered_items)}</div>'
+    f'</div>', 
+    unsafe_allow_html=True
+)
 
-with col2:
-    # 주차별 액션아이템 수
-    if not filtered_items.empty and "week" in filtered_items.columns:
-        act_cnt = filtered_items.groupby("week").size().reset_index(name="액션아이템 수")
-        st.bar_chart(act_cnt.set_index("week")["액션아이템 수"])
-        st.caption("주차별 액션아이템 수")
+# 3. 미완료(Pending)
+kpi3.markdown(
+    f'<div data-testid="metric-container">'
+    f'<div style="color: #F1F5F9 !important; font-size: 14px; font-weight: 600; margin-bottom: 8px;">⛔ 미완료(Pending)</div>'
+    f'<div style="color: #FFFFFF !important; font-size: 28px; font-weight: 700;">{pending_count}</div>'
+    f'</div>', 
+    unsafe_allow_html=True
+)
 
-st.markdown("---")
+# 4. 선택된 광고주
+kpi4.markdown(
+    f'<div data-testid="metric-container">'
+    f'<div style="color: #F1F5F9 !important; font-size: 14px; font-weight: 600; margin-bottom: 8px;">👥 선택된 광고주</div>'
+    f'<div style="color: #FFFFFF !important; font-size: 24px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{selected_advertiser}</div>'
+    f'</div>', 
+    unsafe_allow_html=True
+)
 
-# ════════════════════════════════════════════════════════════
-# Widget 2: 담당자별 미완료 액션아이템 Top N
-# ════════════════════════════════════════════════════════════
-st.subheader("👤 위젯 2 — 담당자별 미완료 액션아이템 Top N")
-st.caption("누가 가장 많은 미완료 항목을 보유하고 있는지 → 업무 과부하 조기 감지")
 
-pending_items = filtered_items[filtered_items["status"] == "pending"]
+st.markdown("<br>", unsafe_allow_html=True)
 
-if not pending_items.empty:
-    top_n = st.slider("Top N", min_value=3, max_value=10, value=5)
-    assignee_cnt = (
-        pending_items.groupby(["assignee", "assignee_role"])
-        .size()
-        .reset_index(name="미완료 수")
-        .sort_values("미완료 수", ascending=False)
-        .head(top_n)
-    )
-    assignee_cnt["담당자"] = assignee_cnt["assignee"] + "\n(" + assignee_cnt["assignee_role"] + ")"
 
-    st.bar_chart(assignee_cnt.set_index("담당자")["미완료 수"])
+# ─────────────────────────────────────────────
+# TABS (화면 구조화 및 시각화 고도화)
+# ─────────────────────────────────────────────
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📈 발생 추이", 
+    "👤 담당자별 현황", 
+    "🔑 핵심 키워드", 
+    "🤖 추출 퀄리티 체크"
+])
 
-    # 드릴다운: 담당자 선택 시 해당 액션아이템 목록 표시
-    selected_person = st.selectbox(
-        "담당자 선택 → 상세 보기",
-        ["선택하세요"] + assignee_cnt["assignee"].tolist()
-    )
-    if selected_person != "선택하세요":
-        detail = pending_items[pending_items["assignee"] == selected_person][
-            ["title", "description", "due_date", "priority", "confidence"]
-        ]
-        st.dataframe(detail, use_container_width=True)
-else:
-    st.info("미완료 액션아이템이 없습니다.")
 
-st.markdown("---")
+plotly_layout_defaults = dict(
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=dict(family="Pretendard, -apple-system, sans-serif", color='#b0b8c1', size=12),
+    margin=dict(l=40, r=40, t=40, b=40),
+    xaxis=dict(gridcolor='#223147', zeroline=False, tickfont=dict(color='#8b95a1')),
+    yaxis=dict(gridcolor='#223147', zeroline=False, tickfont=dict(color='#8b95a1')),
+    legend=dict(font=dict(color='#e5e8eb'), bgcolor='rgba(0,0,0,0)')
+)
 
-# ════════════════════════════════════════════════════════════
-# Widget 3: 캠페인/광고주별 반복 이슈 키워드
-# ════════════════════════════════════════════════════════════
-st.subheader("🔑 위젯 3 — 반복 이슈 키워드 (BoW 기반)")
-st.caption("어떤 주제가 회의마다 반복적으로 등장하는지 → 구조적 문제 식별")
-
-STOPWORDS = {
-    "있어요", "해요", "이요", "거요", "됩니다", "하고", "이랑", "에서",
-    "으로", "에도", "하는", "있는", "것을", "이번", "다음", "그냥",
-    "좀", "더", "그", "이", "저", "우리", "네", "아", "어", "음",
-    "것", "수", "할", "해", "한", "및", "또", "안", "못", "잖아요",
-}
-
-def extract_keywords(texts: list[str], top_k: int = 20) -> dict[str, int]:
-    word_counter: Counter = Counter()
-    for text in texts:
-        if not isinstance(text, str):
-            continue
-        words = re.findall(r"[가-힣a-zA-Z]{2,}", text)
-        for w in words:
-            if w not in STOPWORDS and len(w) >= 2:
-                word_counter[w] += 1
-    return dict(word_counter.most_common(top_k))
-
-if not filtered_items.empty:
-    all_texts = filtered_items["description"].tolist() + filtered_items["title"].tolist()
-    keywords = extract_keywords(all_texts)
-    if keywords:
-        kw_df = pd.DataFrame(list(keywords.items()), columns=["키워드", "빈도"])
-        st.bar_chart(kw_df.set_index("키워드")["빈도"])
+# ─────────────────────────────────────────────
+# WIDGET 1: 주차별 회의·액션아이템 발생 추이
+# ─────────────────────────────────────────────
+with tab1:
+    st.subheader("주차별 회의 및 액션아이템 발생 추이")
+    
+    # 데이터 집계 (주차 누락 방지를 위해 아우터 조인 형태 보완)
+    mtg_cnt = filtered_meetings.groupby("week").size().reset_index(name="회의 수")
+    act_cnt = filtered_items.groupby("week").size().reset_index(name="액션아이템 수")
+    trend_df = pd.merge(mtg_cnt, act_cnt, on="week", how="outer").fillna(0).sort_values("week")
+    
+    if not trend_df.empty:
+        fig1 = go.Figure()
+        # 회의 수: 차분한 Slate 그레이톤 곡선
+        fig1.add_trace(go.Scatter(
+            x=trend_df["week"], y=trend_df["회의 수"], 
+            name="회의 수", mode='lines+markers', 
+            line=dict(color='#8b95a1', width=2, shape='spline') # 부드러운 곡선 적용
+        ))
+        fig1.add_trace(go.Scatter(
+            x=trend_df["week"], y=trend_df["액션아이템 수"], 
+            name="액션아이템 수", mode='lines+markers', 
+            line=dict(color='#0064ff', width=4, shape='spline'),
+            fill='tozeroy', 
+            fillcolor='rgba(0, 100, 255, 0.08)' # 면적 글로우 효과
+        ))
+        
+        fig1.update_layout(**plotly_layout_defaults, hovermode="x unified")
+        fig1.update_xaxes(type='category') # X축 정렬 꼬임 강제 방지
+        st.plotly_chart(fig1, use_container_width=True)
     else:
-        st.info("키워드를 추출할 데이터가 부족합니다.")
+        st.info("추이를 표시할 데이터가 없습니다.")
 
-    # 광고주/캠페인별 breakdown
-    if "advertiser" in filtered_items.columns:
-        for adv in filtered_items["advertiser"].dropna().unique():
-            with st.expander(f"📌 {adv} 키워드"):
-                adv_texts = filtered_items[filtered_items["advertiser"] == adv]["description"].tolist()
-                kw = extract_keywords(adv_texts, top_k=10)
-                if kw:
-                    st.bar_chart(pd.DataFrame(list(kw.items()), columns=["키워드", "빈도"]).set_index("키워드"))
 
-st.markdown("---")
+# ─────────────────────────────────────────────
+# WIDGET 2: 담당자별 미완료 액션아이템 Top N
+# ─────────────────────────────────────────────
+with tab2:
+    st.subheader("담당자별 미완료(Pending) 워크로드")
+    pending_items = filtered_items[filtered_items["status"] == "pending"]
+    
+    if not pending_items.empty:
+        top_n = st.slider("표시할 담당자 수 (Top N)", 3, 15, 5)
+        
+        assignee_cnt = (
+            pending_items.groupby(["assignee", "assignee_role"])
+            .size()
+            .reset_index(name="미완료 건수")
+            .sort_values("미완료 건수", ascending=True) 
+        )
+        assignee_cnt["display_name"] = assignee_cnt["assignee"] + " (" + assignee_cnt["assignee_role"] + ")"
+        top_assignees = assignee_cnt.tail(top_n) 
+        
+        fig2 = px.bar(
+            top_assignees, 
+            x="미완료 건수", 
+            y="display_name", 
+            orientation='h',
+            color="미완료 건수",
+            color_continuous_scale=["#0064ff", "#5b36ff"]
+        )
+        fig2.update_layout(**plotly_layout_defaults, coloraxis_showscale=False)
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # 상세 드릴다운 영역
+        st.markdown("---")
+        selected = st.selectbox("🎯 특정 담당자의 상세 액션아이템 보기", ["선택 안 함"] + assignee_cnt["assignee"].unique().tolist())
+        
+        if selected != "선택 안 함":
+            detail_df = pending_items[pending_items["assignee"] == selected][
+                ["title", "description", "due_date", "priority", "confidence"]
+            ]
+            st.dataframe(detail_df, use_container_width=True, hide_index=True)
+    else:
+        st.success("🎉 모든 액션 아이템이 완료되었거나 미완료된 항목이 없습니다!")
 
-# ════════════════════════════════════════════════════════════
-# Widget 4: LLM confidence 분포 + 낮은 항목 드릴다운
-# ════════════════════════════════════════════════════════════
-st.subheader("🤖 위젯 4 — LLM Confidence 분포 & 낮은 항목 드릴다운")
-st.caption("추출 신뢰도가 낮은 항목 = 사람이 검수해야 하는 항목")
 
-if not filtered_items.empty:
-    col_a, col_b, col_c = st.columns(3)
-    high = len(filtered_items[filtered_items["confidence"] >= 0.8])
-    mid  = len(filtered_items[(filtered_items["confidence"] >= 0.5) & (filtered_items["confidence"] < 0.8)])
-    low  = len(filtered_items[filtered_items["confidence"] < 0.5])
+# ─────────────────────────────────────────────
+# WIDGET 3: 캠페인 / 광고주별 반복 이슈 키워드
+# ─────────────────────────────────────────────
+with tab3:
+    st.subheader("반복 검출 키워드 Top 15")
+    
+    STOPWORDS = {"있어요","해요","입니다","하고","에서","으로","것","수","할","한","및","그","이","저","회의","진행", "내용"}
+    
+    def extract_keywords(texts):
+        c = Counter()
+        for t in texts:
+            if not isinstance(t, str): continue
+            words = re.findall(r"[가-힣a-zA-Z]{2,}", t)
+            for w in words:
+                if w not in STOPWORDS:
+                    c[w] += 1
+        return dict(c.most_common(15))
 
-    col_a.metric("✅ High (≥0.8)", high)
-    col_b.metric("⚠️  Medium (0.5~0.79)", mid)
-    col_c.metric("❓ Low (<0.5)", low)
+    if not filtered_items.empty:
+        texts = filtered_items["title"].tolist() + filtered_items["description"].tolist()
+        kw = extract_keywords(texts)
+        
+        if kw:
+            kw_df = pd.DataFrame(list(kw.items()), columns=["단어", "빈도수"]).sort_values("빈도수", ascending=True)
+            
+            fig3 = px.bar(kw_df, x="빈도수", y="단어", orientation='h', color="빈도수", color_continuous_scale="Blues")
+            fig3.update_layout(**plotly_layout_defaults, coloraxis_showscale=False)
+            st.plotly_chart(fig3, use_container_width=True)
+        else:
+            st.info("분석할 키워드가 부족합니다.")
+    else:
+        st.info("데이터가 없습니다.")
 
-    # 히스토그램
-    hist_data = filtered_items["confidence"].dropna()
-    bins = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    labels = [f"{int(b*10)*10}~{int(b*10)*10+10}%" for b in bins[:-1]]
-    counts = pd.cut(hist_data, bins=bins, labels=labels).value_counts().sort_index()
-    st.bar_chart(counts)
 
-    # 드릴다운: 낮은 confidence 항목
-    threshold = st.slider("검수 필요 임계값 (이하)", 0.0, 1.0, 0.7, 0.05)
-    low_conf = filtered_items[filtered_items["confidence"] <= threshold].sort_values("confidence")
-
+# ─────────────────────────────────────────────
+# WIDGET 4: LLM 추출 confidence 분포 + 낮은 항목 드릴다운
+# ─────────────────────────────────────────────
+with tab4:
+    st.subheader("🤖 LLM 추출 신뢰도(Confidence) 분석")
+    
+    colA, colB, colC = st.columns(3)
+    high_c = len(filtered_items[filtered_items["confidence"] >= 0.8])
+    mid_c = len(filtered_items[(filtered_items["confidence"] >= 0.5) & (filtered_items["confidence"] < 0.8)])
+    low_c = len(filtered_items[filtered_items["confidence"] < 0.5])
+    
+    colA.markdown(
+        f'<div data-testid="metric-container">'
+        f'<div style="color: #F1F5F9 !important; font-size: 14px; font-weight: 600; margin-bottom: 8px;">🟢 High (≥ 0.8)</div>'
+        f'<div style="color: #FFFFFF !important; font-size: 28px; font-weight: 700;">{high_c} 건</div>'
+        f'</div>', 
+        unsafe_allow_html=True
+    )
+    
+    # colB: Mid
+    colB.markdown(
+        f'<div data-testid="metric-container">'
+        f'<div style="color: #F1F5F9 !important; font-size: 14px; font-weight: 600; margin-bottom: 8px;">🟡 Mid (0.5 ~ 0.8)</div>'
+        f'<div style="color: #FFFFFF !important; font-size: 28px; font-weight: 700;">{mid_c} 건</div>'
+        f'</div>', 
+        unsafe_allow_html=True
+    )
+    
+    # colC: Low
+    colC.markdown(
+        f'<div data-testid="metric-container">'
+        f'<div style="color: #F1F5F9 !important; font-size: 14px; font-weight: 600; margin-bottom: 8px;">🔴 Low (< 0.5)</div>'
+        f'<div style="color: #FFFFFF !important; font-size: 28px; font-weight: 700;">{low_c} 건</div>'
+        f'</div>', 
+        unsafe_allow_html=True
+    )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    st.markdown("#### Confidence 연속 분포도")
+    hist_values = filtered_items["confidence"].dropna()
+    
+    if not hist_values.empty:
+        # 광택감을 주는 시안/민트그린 톤 히스토그램 변환
+        fig4 = px.histogram(
+            filtered_items, 
+            x="confidence", 
+            nbins=20, 
+            range_x=[0, 1],
+            color_discrete_sequence=['#00d4b2']
+        )
+        fig4.update_layout(
+            **plotly_layout_defaults,
+            bargap=0.15,
+            xaxis_title="Confidence Score",
+            yaxis_title="빈도 수"
+        )
+        st.plotly_chart(fig4, use_container_width=True)
+    
+    # 드릴다운 테이블
+    low_conf = filtered_items[filtered_items["confidence"] <= threshold]
+    st.markdown("---")
+    st.markdown(f"### ⚠️ 검토가 필요한 항목 (Confidence ≤ {threshold})")
+    
     if not low_conf.empty:
-        st.markdown(f"**검수 필요 항목 {len(low_conf)}건** (confidence ≤ {threshold:.0%})")
-        display_cols = ["title", "assignee", "confidence", "source_quote", "due_date"]
-        available = [c for c in display_cols if c in low_conf.columns]
         st.dataframe(
-            low_conf[available].rename(columns={
-                "title": "액션아이템",
-                "assignee": "담당자",
-                "confidence": "신뢰도",
-                "source_quote": "원문 인용",
-                "due_date": "기한",
-            }),
+            low_conf[["title", "assignee", "confidence", "due_date"]].sort_values("confidence"),
             use_container_width=True,
+            hide_index=True
         )
     else:
-        st.success(f"임계값 {threshold:.0%} 이하 항목 없음 ✅")
+        st.success(f"기준점({threshold}) 이하로 신뢰도가 낮은 항목이 없습니다.")
 
-# ── LLM 추출 로그 ────────────────────────────────────────────
+
+# ─────────────────────────────────────────────
+# 🔧 SYSTEM LOGS
+# ─────────────────────────────────────────────
 if not logs_df.empty:
-    with st.expander("🔧 LLM 추출 로그 (재시도 이력)"):
-        st.dataframe(logs_df[["meeting_id", "attempt", "model", "success", "error_message", "created_at"]])
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    with st.expander("🛠️ 시스템 백엔드 LLM 로그 확인"):
+        st.dataframe(logs_df, use_container_width=True)
