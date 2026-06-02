@@ -27,6 +27,21 @@ ABBR_DICT: dict[str, str] = {
     r"\bVTR\b": "VTR(영상조회율)",
 }
 
+
+TAKE_UTTERANCES_QUERY ="""
+        SELECT segment_id, meeting_id, speaker, role, text
+        FROM utterances_raw
+        WHERE meeting_id = ?
+        ORDER BY segment_id
+    """
+
+PUSH_PROCESSED_QUERY = """
+        INSERT INTO utterances_processed
+        (segment_id, meeting_id, speaker, role,
+        original_text, normalized_text, chunk_index)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """
+
 # ── 발화 잡음 패턴 ───────────────────────────────────────────
 NOISE_PATTERNS = [
     r"(음+|어+|아+|에+)\s*,?\s*",          # 필러: 음, 어, 아
@@ -35,13 +50,10 @@ NOISE_PATTERNS = [
     r"\s{2,}",                              # 연속 공백 → 단일
 ]
 
-# ── 암묵적 담당자 표현 정규화 ────────────────────────────────
-IMPLICIT_ASSIGNEE_PATTERNS = [
-    (r"제가\s*(챙길게요|할게요|맡을게요|보낼게요|확인할게요)", "담당자 자발적 수락"),
-    (r"(저|제가)\s*(한번|좀)\s*(볼게요|확인해볼게요|체크할게요)", "담당자 자발적 수락"),
-    (r"(팀장님|팀장)\s*(이|이서|이)\s*(결정|판단|확인)", "팀장 결정 필요"),
+TOPIC_SHIFT_KEYWORDS = [
+    "그리고", "다음으로", "두 번째", "세 번째", "또", "아 그리고",
+    "그 다음", "넘어가서", "다음 안건", "마지막으로",
 ]
-
 
 def apply_abbr(text: str) -> str:
     for pattern, replacement in ABBR_DICT.items():
@@ -56,18 +68,12 @@ def remove_noise(text: str) -> str:
 
 
 def normalize_utterance(text: str) -> str:
-    text = remove_noise(text)
     text = apply_abbr(text)
+    text = remove_noise(text)
     return text
 
 
 # ── 의미 단위 청킹 ───────────────────────────────────────────
-# 같은 화자가 연속으로 이어지거나, 주제 전환 키워드가 없으면 같은 청크로 묶음
-TOPIC_SHIFT_KEYWORDS = [
-    "그리고", "다음으로", "두 번째", "세 번째", "또", "아 그리고",
-    "그 다음", "넘어가서", "다음 안건", "마지막으로",
-]
-
 def _is_topic_shift(text: str) -> bool:
     return any(kw in text for kw in TOPIC_SHIFT_KEYWORDS)
 
@@ -102,12 +108,7 @@ def transform(meeting_id: str):
     """raw utterances → processed utterances 변환 후 DB 저장 (멱등)"""
     conn = get_connection()
 
-    rows = conn.execute("""
-        SELECT segment_id, meeting_id, speaker, role, text
-        FROM utterances_raw
-        WHERE meeting_id = ?
-        ORDER BY segment_id
-    """, (meeting_id,)).fetchall()
+    rows = conn.execute(TAKE_UTTERANCES_QUERY, (meeting_id,)).fetchall()
 
     if not rows:
         print(f"[Transform] No raw segments for {meeting_id}")
@@ -132,12 +133,7 @@ def transform(meeting_id: str):
 
     with conn:
         for item in chunked:
-            conn.execute("""
-                INSERT OR REPLACE INTO utterances_processed
-                    (segment_id, meeting_id, speaker, role,
-                     original_text, normalized_text, chunk_index)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
+            conn.execute(PUSH_PROCESSED_QUERY, (
                 item["segment_id"], item["meeting_id"],
                 item["speaker"], item["role"],
                 item["original_text"], item["normalized_text"],
@@ -146,10 +142,3 @@ def transform(meeting_id: str):
 
     conn.close()
     print(f"[Transform] Processed {len(chunked)} segments → {chunked[-1]['chunk_index']+1} chunks")
-
-
-if __name__ == "__main__":
-    import sys
-    meeting_id = sys.argv[1] if len(sys.argv) > 1 else None
-    if meeting_id:
-        transform(meeting_id)
