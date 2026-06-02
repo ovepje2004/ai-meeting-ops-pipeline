@@ -1,6 +1,5 @@
 import re
 from pipeline.db import get_connection
-from pipeline.models import ProcessedUtterance
 
 # ── 광고·마케팅 약어 사전 ────────────────────────────────────
 ABBR_DICT: dict[str, str] = {
