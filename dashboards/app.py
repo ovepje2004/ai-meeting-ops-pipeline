@@ -380,9 +380,11 @@ with tab4:
         fig4 = px.histogram(
             filtered_items, 
             x="confidence", 
-            nbins=20, 
             range_x=[0, 1],
             color_discrete_sequence=['#00d4b2']
+        )
+        fig4.update_traces(
+            xbins=dict(start=0.0, end=1.0, size=0.05)
         )
         fig4.update_layout(
             **plotly_layout_defaults,
