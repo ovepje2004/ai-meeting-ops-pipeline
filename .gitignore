@@ -4,8 +4,8 @@ __pycache__/
 
 .env
 
-*.db
-data/meeting_pipeline.db
+data\processed
+data\raw\ko_meeting_3speakers.json
 
 .streamlit/
 
