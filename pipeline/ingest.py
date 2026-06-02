@@ -39,6 +39,7 @@ def ingest(json_path: str | Path, advertiser: str, title: str) -> str:
 
     meeting_id = _make_meeting_id(json_path)
     meeting_date = date.today().isoformat()
+    #meeting_date = "2026-06-11"
 
     conn = get_connection()
     with conn:
