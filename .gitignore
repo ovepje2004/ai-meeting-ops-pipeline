@@ -7,8 +7,6 @@ __pycache__/
 *.db
 data/meeting_pipeline.db
 
-data/processed/
-
 .streamlit/
 
 .DS_Store
