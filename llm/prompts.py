@@ -59,11 +59,12 @@ FEW_SHOT_EXAMPLES = """
 """.strip()
 
 
-def build_extraction_prompt(utterances: list[dict], advertiser: str = "노바드림") -> str:
+def build_extraction_prompt(utterances: list[dict], advertiser: str) -> str:
     """발화 목록 → LLM 추출 프롬프트 생성"""
-    lines = []
-    for u in utterances:
-        lines.append(f"[{u['segment_id']}] {u['speaker']}({u['role']}): {u['normalized_text']}")
+    lines = [
+        f"[{u['segment_id']}] {u['speaker']}({u['role']}): {u['normalized_text']}"
+        for u in utterances
+    ]
 
     transcript_text = "\n".join(lines)
 

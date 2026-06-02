@@ -1,9 +1,11 @@
 from __future__ import annotations
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
+HIGH_THRESHOLD = 0.8
+MEDIUM_THRESHOLD = 0.5
 
 class ActionStatus(str, Enum):
     PENDING = "pending"
@@ -75,9 +77,9 @@ class ActionItem(BaseModel):
         if v is not None:
             return v
         confidence = info.data.get("confidence", 0)
-        if confidence >= 0.8:
+        if confidence >= HIGH_THRESHOLD:
             return ConfidenceLevel.HIGH
-        elif confidence >= 0.5:
+        elif confidence >= MEDIUM_THRESHOLD:
             return ConfidenceLevel.MEDIUM
         else:
             return ConfidenceLevel.LOW
@@ -104,7 +106,7 @@ class Meeting(BaseModel):
     meeting_id: str
     title: str
     advertiser: str
-    meeting_date: str             # YYYY-MM-DD
+    meeting_date: str          # YYYY-MM-DD
     language: str
     speaker_count: int
     segment_count: int
