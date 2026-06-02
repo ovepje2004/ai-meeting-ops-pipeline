@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 from pipeline.db import DB_PATH
 
 # ─────────────────────────────────────────────
-# 🎨 UI CONFIG
+# UI CONFIG
 # ─────────────────────────────────────────────
 st.set_page_config(
     page_title="Meeting Intelligence",
@@ -21,7 +21,6 @@ st.set_page_config(
     layout="wide",
 )
 
-# 토스(Toss) 다크모드 인앱 스타일 CSS 고도화 (맥 스타일 고딕 폰트 매핑)
 st.markdown("""
 <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
@@ -45,13 +44,11 @@ st.markdown("""
         letter-spacing: -0.03em !important;
     }
     
-    /* 📌 필터 컴포넌트(Selectbox, Slider) 라벨 글씨 화이트로 */
     label[data-testid="stWidgetLabel"] p {
         color: #ffffff !important;
         font-weight: 600 !important;
     }
     
-    /* 토스형 미니멀 KPI 카드 리디자인 */
     div[data-testid="metric-container"] {
         background: #172131;
         border: 1px solid #223147;
@@ -66,25 +63,22 @@ st.markdown("""
         box-shadow: 0 12px 24px rgba(0, 100, 255, 0.15);
     }
     
-    /* 📌 KPI 숫자 크고 선명한 화이트로 고정 */
     div[data-testid="stMetricValue"] {
         color: #ffffff !important;
         font-size: 26px !important;
         font-weight: 700 !important;
     }
     
-    /* 📌 KPI 설명 라벨을 기존 어두운 회색에서 밝은 회색으로 변경 */
     div[data-testid="stMetricLabel"] {
         color: #f1f5f9 !important;
         font-size: 14px !important;
         font-weight: 500 !important;
     }
     
-    /* 토스 세그먼트형 Tab 디자인 커스텀 */
     button[data-baseweb="tab"] {
         font-size: 15px !important;
         font-weight: 600 !important;
-        color: #94a3b8 !important; /* [변경] 선택되지 않은 탭도 좀 더 밝게 */
+        color: #94a3b8 !important;
         padding: 12px 16px !important;
     }
     button[data-baseweb="tab"][aria-selected="true"] {
@@ -96,7 +90,7 @@ st.markdown("""
 
 
 # ─────────────────────────────────────────────
-# 📦 DATA LOADING
+# DATA LOADING
 # ─────────────────────────────────────────────
 @st.cache_data(ttl=30)
 def load_data():
@@ -120,7 +114,7 @@ if meetings_df is None or len(meetings_df) == 0:
 
 
 # ─────────────────────────────────────────────
-# 🧹 PREPROCESSING 
+# PREPROCESSING 
 # ─────────────────────────────────────────────
 items_df = items_df.merge(
     meetings_df[["meeting_id", "meeting_date"]],
@@ -140,7 +134,7 @@ items_df["week"] = items_df["meeting_date"].dt.to_period("W").astype(str)
 
 
 # ─────────────────────────────────────────────
-# 🎛 TOP FILTER BAR
+# TOP FILTER BAR
 # ─────────────────────────────────────────────
 st.title("📊 Meeting Intelligence Dashboard")
 
@@ -163,7 +157,7 @@ pending_count = len(filtered_items[filtered_items["status"] == "pending"])
 
 
 # ─────────────────────────────────────────────
-# 📦 KPI CARDS
+# KPI CARDS
 # ─────────────────────────────────────────────
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
@@ -208,7 +202,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
-# 📑 TABS (화면 구조화 및 시각화 고도화)
+# TABS (화면 구조화 및 시각화 고도화)
 # ─────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
     "📈 발생 추이", 
@@ -217,7 +211,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "🤖 추출 퀄리티 체크"
 ])
 
-# Plotly 공통 레이아웃 스타일 정의 (Toss 다크 폰트 및 그리드 반영)
+
 plotly_layout_defaults = dict(
     paper_bgcolor='rgba(0,0,0,0)',
     plot_bgcolor='rgba(0,0,0,0)',
@@ -247,11 +241,10 @@ with tab1:
             name="회의 수", mode='lines+markers', 
             line=dict(color='#8b95a1', width=2, shape='spline') # 부드러운 곡선 적용
         ))
-        # 액션아이템 수: 토스 시그니처 블루 곡선 + 하단 은은한 글로우
         fig1.add_trace(go.Scatter(
             x=trend_df["week"], y=trend_df["액션아이템 수"], 
             name="액션아이템 수", mode='lines+markers', 
-            line=dict(color='#0064ff', width=4, shape='spline'), # 토스 블루 곡선 적용
+            line=dict(color='#0064ff', width=4, shape='spline'),
             fill='tozeroy', 
             fillcolor='rgba(0, 100, 255, 0.08)' # 면적 글로우 효과
         ))
@@ -282,7 +275,6 @@ with tab2:
         assignee_cnt["display_name"] = assignee_cnt["assignee"] + " (" + assignee_cnt["assignee_role"] + ")"
         top_assignees = assignee_cnt.tail(top_n) 
         
-        # 토스형 블루-퍼플 그라데이션 히트맵 스타일 바 스케일 적용
         fig2 = px.bar(
             top_assignees, 
             x="미완료 건수", 
@@ -332,7 +324,6 @@ with tab3:
         if kw:
             kw_df = pd.DataFrame(list(kw.items()), columns=["단어", "빈도수"]).sort_values("빈도수", ascending=True)
             
-            # 은은한 토스 블루 모노톤 스케일 매핑
             fig3 = px.bar(kw_df, x="빈도수", y="단어", orientation='h', color="빈도수", color_continuous_scale="Blues")
             fig3.update_layout(**plotly_layout_defaults, coloraxis_showscale=False)
             st.plotly_chart(fig3, use_container_width=True)
