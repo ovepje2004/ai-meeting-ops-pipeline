@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+
+.env
+
+*.db
+data/meeting_pipeline.db
+
+data/processed/
+
+.streamlit/
+
+.DS_Store
+Thumbs.db
