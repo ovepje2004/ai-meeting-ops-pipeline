@@ -96,7 +96,3 @@ def init_db():
         """)
     conn.close()
     print(f"[DB] Initialized at {DB_PATH}")
-
-
-if __name__ == "__main__":
-    init_db()
