@@ -13,6 +13,8 @@
 
 ### 설치
 
+📌.env는 반드시 프로젝트 루트에 위치
+
 ```bash
 git clone https://github.com/ovepje2004/ai-meeting-ops-pipeline.git
 cd ai-meeting-ops-pipeline
@@ -22,6 +24,7 @@ pip install -r requirements.txt
 ```
 
 ### 환경 변수 설정
+
 
 ```bash
 # .env 파일 생성
